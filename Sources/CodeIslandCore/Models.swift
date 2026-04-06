@@ -107,9 +107,8 @@ public struct QuestionPayload {
             let options = event.rawJSON["options"] as? [String]
             return QuestionPayload(question: question, options: options)
         }
-        if let msg = event.rawJSON["message"] as? String, msg.contains("?") {
-            return QuestionPayload(question: msg, options: nil)
-        }
+        // Don't use "?" heuristic — normal status text like "Should I update tests?"
+        // would be misclassified as a blocking question, stalling the hook.
         return nil
     }
 }

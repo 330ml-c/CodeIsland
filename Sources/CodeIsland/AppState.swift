@@ -1162,8 +1162,8 @@ final class AppState {
             let len = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
             guard len > 0 else { continue }
             let path = String(cString: pathBuffer)
-            // Match Codex native binary (under @openai/codex)
-            if path.contains("@openai/codex") && path.hasSuffix("/codex") {
+            // Match Codex: npm install (@openai/codex) or Codex Desktop app
+            if (path.contains("@openai/codex") || path.contains("Codex.app/Contents/")) && path.hasSuffix("/codex") {
                 codexPids.append(pid)
             }
         }
