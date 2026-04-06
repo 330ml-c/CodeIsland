@@ -1020,9 +1020,7 @@ final class AppState {
                 if let pid = info.pid, processMonitors[existingKey] == nil {
                     monitorProcess(sessionId: existingKey, pid: pid)
                 }
-                if let existingKey {
-                    refreshProviderTitle(for: existingKey, providerSessionId: info.sessionId)
-                }
+                refreshProviderTitle(for: existingKey, providerSessionId: info.sessionId)
                 continue
             }
 
