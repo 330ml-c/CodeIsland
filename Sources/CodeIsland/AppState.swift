@@ -19,6 +19,29 @@ final class AppState {
     var activeSessionId: String?
     var permissionQueue: [PermissionRequest] = []
     var questionQueue: [QuestionRequest] = []
+    /// Cache of in-flight PreToolUse records keyed by tool_use_id. Used to correlate
+    /// permission requests back to their originating tool call. See AppState+ToolUseCache.
+    @ObservationIgnored
+    var pendingToolUses: [String: PreToolUseRecord] = [:]
+    /// Records the transcript path currently watched for each session so we only
+    /// reattach when the path actually changes. See AppState+TranscriptTailer.
+    @ObservationIgnored
+    var attachedTranscriptPaths: [String: String] = [:]
+    /// Watches active session transcripts for appended assistant lines. Lazily
+    /// constructed so the delta handler can safely capture `self`.
+    @ObservationIgnored
+    lazy var transcriptTailer: JSONLTailer = JSONLTailer { [weak self] delta in
+        Task { @MainActor in
+            self?.applyTranscriptDelta(delta)
+        }
+    }
+    /// Active JSON-RPC client connected to `codex app-server`, or nil when
+    /// Codex Desktop isn't running. See AppState+CodexAppServer.
+    @ObservationIgnored
+    var codexAppServerClient: CodexAppServerClient?
+    /// NSWorkspace launch/terminate observers tracking Codex Desktop.
+    @ObservationIgnored
+    var codexAppServerObservers: [NSObjectProtocol]?
 
     /// Computed: first item in permission queue (backward compat for UI reads)
     var pendingPermission: PermissionRequest? { permissionQueue.first }
@@ -209,6 +232,10 @@ final class AppState {
                 removeSession(key)
             }
         }
+
+        // 5. Reclaim memory for abandoned tool_use_id cache entries.
+        prunePendingToolUses()
+
         refreshDerivedState()
     }
 
@@ -444,6 +471,7 @@ final class AppState {
         }
         sessions.removeValue(forKey: sessionId)
         stopMonitor(sessionId)
+        detachTranscriptTailer(sessionId: sessionId)
         exitingSessions.removeValue(forKey: sessionId)
         modelReadRetryAt.removeValue(forKey: sessionId)
         completionQueue.removeAll { $0 == sessionId }
@@ -752,7 +780,7 @@ final class AppState {
 
     /// Recompute cached status/source/counts from sessions in a single O(n) pass.
     /// Call after any mutation to `sessions` or session status.
-    private func refreshDerivedState() {
+    func refreshDerivedState() {
         let summary = deriveSessionSummary(from: sessions)
         // When there are no sessions at all, honor the user-configured default mascot source
         // instead of the built-in "claude" fallback (#102).
@@ -814,6 +842,14 @@ final class AppState {
         let prevStatus = sessions[sessionId]?.status
         let wasWaiting = prevStatus == .waitingApproval || prevStatus == .waitingQuestion
 
+        // Cache PreToolUse payloads so downstream events sharing tool_use_id can be
+        // correlated, and drain queue entries whose agent already moved on.
+        let permissionCountBefore = permissionQueue.lazy.filter { $0.event.sessionId == sessionId }.count
+        cachePreToolUseIfApplicable(event)
+        resolveToolUseIfCompleted(event)
+        let permissionCountAfter = permissionQueue.lazy.filter { $0.event.sessionId == sessionId }.count
+        let surgicallyDrained = permissionCountAfter < permissionCountBefore
+
         let effects = reduceEvent(sessions: &sessions, event: event, maxHistory: maxHistory)
 
         // Backfill model after metadata extraction. Hooks are inconsistent across providers,
@@ -824,11 +860,18 @@ final class AppState {
 
         // If session was waiting but received an activity event, the question/permission
         // was answered externally (e.g. user replied in terminal). Clear pending items.
+        //
+        // Exception: when resolveToolUseIfCompleted already surgically drained the queue
+        // entry matching this event's tool_use_id and other permission requests for the
+        // same session remain, the surgical drain IS the whole story — skip the blanket
+        // sweep so concurrent in-flight tools stay queued (tested by
+        // testPostToolUseDoesNotAffectUnrelatedQueueEntries).
         if wasWaiting {
             let en = EventNormalizer.normalize(event.eventName)
             // Events that should NOT clear waiting state
             let keepWaiting: Set<String> = ["Notification", "SessionStart", "SessionEnd", "PreCompact"]
-            if !keepWaiting.contains(en) {
+            let skipBlanketDrain = surgicallyDrained && permissionCountAfter > 0
+            if !keepWaiting.contains(en) && !skipBlanketDrain {
                 drainPermissions(forSession: sessionId)
                 drainQuestions(forSession: sessionId)
                 if sessions[sessionId]?.status == .waitingApproval
@@ -855,6 +898,12 @@ final class AppState {
            sessions[sessionId]?.isRemote != true,
            SessionTitleStore.supports(provider: provider) {
             refreshProviderTitle(for: sessionId)
+        }
+
+        // If a hook just supplied (or changed) this session's transcript path, attach
+        // the tailer so the next assistant append shows up in the panel immediately.
+        if sessions[sessionId]?.isRemote != true {
+            attachTranscriptTailerIfNeeded(sessionId: sessionId)
         }
 
         // Handle the "else if activeSessionId == sessionId → mostActive" edge case
@@ -932,8 +981,18 @@ final class AppState {
         sessions[sessionId]?.currentTool = event.toolName
         sessions[sessionId]?.toolDescription = event.toolDescription
         sessions[sessionId]?.lastActivity = Date()
+        // Backfill tool name/description from cached PreToolUse when the payload is thin.
+        enrichPermissionRequestFromCache(sessionId: sessionId, event: event)
 
         let request = PermissionRequest(event: event, continuation: continuation)
+
+        // Replay deduplication: if the same tool_use_id is already queued, swap the
+        // continuation in place and deny the previous waiter. Preserves card order.
+        if mergeDuplicatePermissionRequest(request) {
+            refreshDerivedState()
+            return
+        }
+
         permissionQueue.append(request)
 
         // Show UI only if this is the first (or only) queued item
@@ -1300,7 +1359,7 @@ final class AppState {
 
     /// After dequeuing, show next pending item or collapse
     @discardableResult
-    private func showNextPending() -> Bool {
+    func showNextPending() -> Bool {
         if let idx = nextVisiblePermissionIndex() {
             let next = permissionQueue.remove(at: idx)
             permissionQueue.insert(next, at: 0)
@@ -1885,6 +1944,11 @@ final class AppState {
                 if backfillSessionMessages(sessionId: info.sessionId, from: info) {
                     didMutate = true
                 }
+                if let path = info.transcriptPath, sessions[info.sessionId]?.transcriptPath != path {
+                    sessions[info.sessionId]?.transcriptPath = path
+                    didMutate = true
+                }
+                attachTranscriptTailerIfNeeded(sessionId: info.sessionId)
                 tryMonitorSession(info.sessionId)
                 refreshProviderTitle(for: info.sessionId, providerSessionId: info.sessionId)
                 continue
@@ -1933,6 +1997,11 @@ final class AppState {
                 if backfillSessionMessages(sessionId: existingKey, from: info) {
                     didMutate = true
                 }
+                if let path = info.transcriptPath, sessions[existingKey]?.transcriptPath != path {
+                    sessions[existingKey]?.transcriptPath = path
+                    didMutate = true
+                }
+                attachTranscriptTailerIfNeeded(sessionId: existingKey)
                 tryMonitorSession(existingKey)
                 refreshProviderTitle(for: existingKey, providerSessionId: info.sessionId)
                 continue
@@ -1957,9 +2026,11 @@ final class AppState {
             if let last = info.recentMessages.last(where: { !$0.isUser }) {
                 session.lastAssistantMessage = last.text
             }
+            session.transcriptPath = info.transcriptPath
             sessions[info.sessionId] = session
             refreshProviderTitle(for: info.sessionId, providerSessionId: info.sessionId)
             tryMonitorSession(info.sessionId)
+            attachTranscriptTailerIfNeeded(sessionId: info.sessionId)
             didMutate = true
         }
         if didMutate && activeSessionId == nil {
@@ -2012,6 +2083,10 @@ final class AppState {
         let modifiedAt: Date
         let recentMessages: [ChatMessage]
         var source: String = "claude"
+        /// Absolute path to the JSONL transcript this session was discovered from.
+        /// When non-nil and the session is still live, AppState registers a JSONLTailer
+        /// so incremental assistant appends reach the UI without another full scan.
+        var transcriptPath: String? = nil
     }
 
     /// Find running `claude` processes, match to transcript files, extract recent messages
@@ -2070,7 +2145,8 @@ final class AppState {
             guard !seenSessionIds.contains(sessionId) else { continue }
             seenSessionIds.insert(sessionId)
 
-            let (model, messages) = readRecentFromTranscript(path: "\(projectPath)/\(file)")
+            let fullPath = "\(projectPath)/\(file)"
+            let (model, messages) = readRecentFromTranscript(path: fullPath)
 
             results.append(DiscoveredSession(
                 sessionId: sessionId,
@@ -2079,7 +2155,8 @@ final class AppState {
                 model: model,
                 pid: pid,
                 modifiedAt: bestDate,
-                recentMessages: messages
+                recentMessages: messages,
+                transcriptPath: fullPath
             ))
         }
         return results
