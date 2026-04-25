@@ -121,6 +121,18 @@ class HookServer {
         SettingsManager.shared.autoApproveTools
     }
 
+    /// User-configured cwd substring blocklist for plugin/background hooks (e.g. claude-mem).
+    /// Empty default = no filtering. Trimmed, blank entries skipped.
+    private static func eventMatchesExcludedCwd(_ cwd: String) -> Bool {
+        let raw = SettingsManager.shared.excludedHookCwdSubstrings
+        guard !raw.isEmpty else { return false }
+        for entry in raw.split(separator: ",") {
+            let pattern = entry.trimmingCharacters(in: .whitespaces)
+            if !pattern.isEmpty, cwd.contains(pattern) { return true }
+        }
+        return false
+    }
+
     static func routeKind(for event: HookEvent) -> RouteKind {
         let normalizedEventName = EventNormalizer.normalize(event.eventName)
         if normalizedEventName == "PermissionRequest" {
@@ -140,6 +152,16 @@ class HookServer {
 
         if let rawSource = event.rawJSON["_source"] as? String,
            SessionSnapshot.normalizedSupportedSource(rawSource) == nil {
+            sendResponse(connection: connection, data: Data("{}".utf8))
+            return
+        }
+
+        // User-configured cwd exclusion: drop hooks fired by background plugins
+        // (e.g. claude-mem, agent loops) whose cwd matches any user-provided
+        // substring. Default empty list = no filtering, matches existing behavior. (#125)
+        if let cwd = event.rawJSON["cwd"] as? String,
+           !cwd.isEmpty,
+           Self.eventMatchesExcludedCwd(cwd) {
             sendResponse(connection: connection, data: Data("{}".utf8))
             return
         }

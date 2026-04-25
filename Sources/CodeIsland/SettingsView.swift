@@ -349,6 +349,7 @@ private struct BehaviorPage: View {
     @AppStorage(SettingsKey.rotationInterval) private var rotationInterval = SettingsDefaults.rotationInterval
     @AppStorage(SettingsKey.maxToolHistory) private var maxToolHistory = SettingsDefaults.maxToolHistory
     @AppStorage(SettingsKey.autoApproveTools) private var autoApproveRaw: String = SettingsDefaults.autoApproveTools
+    @AppStorage(SettingsKey.excludedHookCwdSubstrings) private var excludedHookCwdSubstrings: String = SettingsDefaults.excludedHookCwdSubstrings
 
     private func autoApproveBinding(for name: String) -> Binding<Bool> {
         Binding(
@@ -428,6 +429,15 @@ private struct BehaviorPage: View {
                         }
                     }
                 }
+            }
+
+            Section(l10n["excluded_hook_cwd_title"]) {
+                Text(l10n["excluded_hook_cwd_desc"])
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField(l10n["excluded_hook_cwd_placeholder"], text: $excludedHookCwdSubstrings)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12, design: .monospaced))
             }
 
             Section(l10n["sessions"]) {

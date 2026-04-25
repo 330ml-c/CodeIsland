@@ -94,6 +94,9 @@ enum SettingsKey {
 
     // Auto-approve tools (comma-separated tool names)
     static let autoApproveTools = "autoApproveTools"
+
+    // Hook cwd exclusion (comma-separated substrings; cwd containing any drops the event)
+    static let excludedHookCwdSubstrings = "excludedHookCwdSubstrings"
 }
 
 struct SettingsDefaults {
@@ -148,6 +151,8 @@ struct SettingsDefaults {
     static let selectedBuddyName = ""
 
     static let autoApproveTools = "TaskCreate,TaskUpdate,TaskGet,TaskList,TaskOutput,TaskStop,TodoRead,TodoWrite,EnterPlanMode"
+
+    static let excludedHookCwdSubstrings = ""
 }
 
 @MainActor
@@ -198,6 +203,7 @@ class SettingsManager {
             SettingsKey.selectedBuddyName: SettingsDefaults.selectedBuddyName,
             SettingsKey.defaultSource: SettingsDefaults.defaultSource,
             SettingsKey.autoApproveTools: SettingsDefaults.autoApproveTools,
+            SettingsKey.excludedHookCwdSubstrings: SettingsDefaults.excludedHookCwdSubstrings,
         ])
     }
 
@@ -333,6 +339,13 @@ class SettingsManager {
         set {
             defaults.set(newValue.sorted().joined(separator: ","), forKey: SettingsKey.autoApproveTools)
         }
+    }
+
+    /// Comma-separated list of substrings; any hook event whose `cwd` contains
+    /// any of them is silently dropped by `HookServer` (#125 plugin / claude-mem).
+    var excludedHookCwdSubstrings: String {
+        get { defaults.string(forKey: SettingsKey.excludedHookCwdSubstrings) ?? SettingsDefaults.excludedHookCwdSubstrings }
+        set { defaults.set(newValue, forKey: SettingsKey.excludedHookCwdSubstrings) }
     }
 }
 

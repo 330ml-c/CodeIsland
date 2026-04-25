@@ -126,6 +126,11 @@ final class L10n: ObservableObject {
         "auto_approve_EnterPlanMode": "Enter plan mode",
         "auto_approve_ExitPlanMode": "Exit plan mode and request approval",
 
+        // Excluded hook cwd
+        "excluded_hook_cwd_title": "Ignore Hooks From Paths",
+        "excluded_hook_cwd_desc": "Comma-separated substrings. Any hook event whose working directory contains one of them is silently dropped — useful for filtering out background plugins like claude-mem. Example: .claude-mem,.cache/agents",
+        "excluded_hook_cwd_placeholder": "e.g. .claude-mem,.cache/agents",
+
         // Appearance
         "preview": "Preview",
         "panel": "Panel",
@@ -409,6 +414,11 @@ final class L10n: ObservableObject {
         "auto_approve_TodoWrite": "写入待办列表",
         "auto_approve_EnterPlanMode": "进入计划模式",
         "auto_approve_ExitPlanMode": "退出计划模式并请求审批",
+
+        // Excluded hook cwd
+        "excluded_hook_cwd_title": "忽略指定路径的 Hook",
+        "excluded_hook_cwd_desc": "用逗号分隔的子串。任何 hook 事件的工作目录如果包含其中之一就会被静默丢弃 —— 适合过滤 claude-mem 等后台插件。示例：.claude-mem,.cache/agents",
+        "excluded_hook_cwd_placeholder": "例如 .claude-mem,.cache/agents",
 
         // Appearance
         "preview": "预览",
@@ -694,6 +704,11 @@ final class L10n: ObservableObject {
         "auto_approve_EnterPlanMode": "プランモードに移行",
         "auto_approve_ExitPlanMode": "プランモードを終了して承認を要求",
 
+        // Excluded hook cwd
+        "excluded_hook_cwd_title": "指定パスの Hook を無視",
+        "excluded_hook_cwd_desc": "カンマ区切りの部分文字列。作業ディレクトリにいずれかを含む hook イベントは静かに破棄されます。claude-mem 等のバックグラウンドプラグイン除外に便利です。例：.claude-mem,.cache/agents",
+        "excluded_hook_cwd_placeholder": "例: .claude-mem,.cache/agents",
+
         // Appearance
         "preview": "プレビュー",
         "panel": "パネル",
@@ -978,6 +993,11 @@ final class L10n: ObservableObject {
         "auto_approve_EnterPlanMode": "계획 모드 진입",
         "auto_approve_ExitPlanMode": "계획 모드 종료 및 승인 요청",
 
+        // Excluded hook cwd
+        "excluded_hook_cwd_title": "지정 경로의 Hook 무시",
+        "excluded_hook_cwd_desc": "쉼표로 구분된 부분 문자열. 작업 디렉터리에 하나라도 포함된 hook 이벤트는 조용히 폐기됩니다. claude-mem 같은 백그라운드 플러그인 필터링에 유용합니다. 예: .claude-mem,.cache/agents",
+        "excluded_hook_cwd_placeholder": "예: .claude-mem,.cache/agents",
+
         // Appearance
         "preview": "미리보기",
         "panel": "패널",
@@ -1261,6 +1281,11 @@ final class L10n: ObservableObject {
         "auto_approve_TodoWrite": "Yapılacaklar listesine yaz",
         "auto_approve_EnterPlanMode": "Plan moduna gir",
         "auto_approve_ExitPlanMode": "Plan modundan çık ve onay iste",
+
+        // Excluded hook cwd
+        "excluded_hook_cwd_title": "Belirli Yolların Hook'larını Yoksay",
+        "excluded_hook_cwd_desc": "Virgülle ayrılmış alt dizeler. Çalışma dizini bunlardan birini içeren hook olayları sessizce yok sayılır — claude-mem gibi arka plan eklentilerini filtrelemek için kullanışlı. Örn: .claude-mem,.cache/agents",
+        "excluded_hook_cwd_placeholder": "örn. .claude-mem,.cache/agents",
 
         // Appearance
         "preview": "Önizleme",
