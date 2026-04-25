@@ -350,6 +350,9 @@ private struct BehaviorPage: View {
     @AppStorage(SettingsKey.maxToolHistory) private var maxToolHistory = SettingsDefaults.maxToolHistory
     @AppStorage(SettingsKey.autoApproveTools) private var autoApproveRaw: String = SettingsDefaults.autoApproveTools
     @AppStorage(SettingsKey.excludedHookCwdSubstrings) private var excludedHookCwdSubstrings: String = SettingsDefaults.excludedHookCwdSubstrings
+    @AppStorage(SettingsKey.webhookEnabled) private var webhookEnabled: Bool = SettingsDefaults.webhookEnabled
+    @AppStorage(SettingsKey.webhookURL) private var webhookURL: String = SettingsDefaults.webhookURL
+    @AppStorage(SettingsKey.webhookEventFilter) private var webhookEventFilter: String = SettingsDefaults.webhookEventFilter
 
     private func autoApproveBinding(for name: String) -> Binding<Bool> {
         Binding(
@@ -438,6 +441,26 @@ private struct BehaviorPage: View {
                 TextField(l10n["excluded_hook_cwd_placeholder"], text: $excludedHookCwdSubstrings)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 12, design: .monospaced))
+            }
+
+            Section(l10n["webhook_title"]) {
+                Text(l10n["webhook_desc"])
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Toggle(l10n["webhook_enable"], isOn: $webhookEnabled)
+                if webhookEnabled {
+                    TextField(l10n["webhook_url_placeholder"], text: $webhookURL)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .autocorrectionDisabled(true)
+                    TextField(l10n["webhook_filter_placeholder"], text: $webhookEventFilter)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .autocorrectionDisabled(true)
+                    Text(l10n["webhook_filter_hint"])
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section(l10n["sessions"]) {

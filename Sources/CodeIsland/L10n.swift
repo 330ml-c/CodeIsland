@@ -131,6 +131,14 @@ final class L10n: ObservableObject {
         "excluded_hook_cwd_desc": "Comma-separated substrings. Any hook event whose working directory contains one of them is silently dropped — useful for filtering out background plugins like claude-mem. Example: .claude-mem,.cache/agents",
         "excluded_hook_cwd_placeholder": "e.g. .claude-mem,.cache/agents",
 
+        // Webhook forwarding
+        "webhook_title": "Webhook Forwarding",
+        "webhook_desc": "Forward hook events to an external HTTP endpoint as JSON. Useful for piping agent activity into DingTalk / Lark / Slack via a generic webhook receiver. Failures are silently ignored.",
+        "webhook_enable": "Enable webhook forwarding",
+        "webhook_url_placeholder": "https://your.webhook.example/hook",
+        "webhook_filter_placeholder": "Optional: Stop,SessionEnd,PermissionRequest",
+        "webhook_filter_hint": "Comma-separated event names; empty = forward every event. Names can be normalized (PreToolUse) or raw (pre_tool_use).",
+
         // Appearance
         "preview": "Preview",
         "panel": "Panel",
@@ -419,6 +427,14 @@ final class L10n: ObservableObject {
         "excluded_hook_cwd_title": "忽略指定路径的 Hook",
         "excluded_hook_cwd_desc": "用逗号分隔的子串。任何 hook 事件的工作目录如果包含其中之一就会被静默丢弃 —— 适合过滤 claude-mem 等后台插件。示例：.claude-mem,.cache/agents",
         "excluded_hook_cwd_placeholder": "例如 .claude-mem,.cache/agents",
+
+        // Webhook 转发
+        "webhook_title": "Webhook 转发",
+        "webhook_desc": "把 hook 事件以 JSON 形式 POST 到外部 HTTP 端点。适合对接钉钉 / 飞书 / Slack 的通用 webhook 接收器，监控 agent 活动。失败静默忽略。",
+        "webhook_enable": "启用 Webhook 转发",
+        "webhook_url_placeholder": "https://你的.webhook.地址/hook",
+        "webhook_filter_placeholder": "可选：Stop,SessionEnd,PermissionRequest",
+        "webhook_filter_hint": "逗号分隔的事件名，留空 = 转发所有事件。支持规范化名（PreToolUse）或原始名（pre_tool_use）。",
 
         // Appearance
         "preview": "预览",
@@ -709,6 +725,14 @@ final class L10n: ObservableObject {
         "excluded_hook_cwd_desc": "カンマ区切りの部分文字列。作業ディレクトリにいずれかを含む hook イベントは静かに破棄されます。claude-mem 等のバックグラウンドプラグイン除外に便利です。例：.claude-mem,.cache/agents",
         "excluded_hook_cwd_placeholder": "例: .claude-mem,.cache/agents",
 
+        // Webhook 転送
+        "webhook_title": "Webhook 転送",
+        "webhook_desc": "hook イベントを JSON として外部 HTTP エンドポイントに POST します。汎用 webhook 受信機経由で DingTalk / Lark / Slack 等にエージェントの活動を通知するのに便利です。失敗は無視されます。",
+        "webhook_enable": "Webhook 転送を有効化",
+        "webhook_url_placeholder": "https://あなたの.webhook.アドレス/hook",
+        "webhook_filter_placeholder": "オプション: Stop,SessionEnd,PermissionRequest",
+        "webhook_filter_hint": "カンマ区切りのイベント名、空 = すべてのイベントを転送。正規化名（PreToolUse）または raw 名（pre_tool_use）対応。",
+
         // Appearance
         "preview": "プレビュー",
         "panel": "パネル",
@@ -998,6 +1022,14 @@ final class L10n: ObservableObject {
         "excluded_hook_cwd_desc": "쉼표로 구분된 부분 문자열. 작업 디렉터리에 하나라도 포함된 hook 이벤트는 조용히 폐기됩니다. claude-mem 같은 백그라운드 플러그인 필터링에 유용합니다. 예: .claude-mem,.cache/agents",
         "excluded_hook_cwd_placeholder": "예: .claude-mem,.cache/agents",
 
+        // Webhook 전달
+        "webhook_title": "Webhook 전달",
+        "webhook_desc": "hook 이벤트를 JSON 형식으로 외부 HTTP 엔드포인트에 POST합니다. 범용 webhook 수신기를 통해 DingTalk / Lark / Slack 등에 에이전트 활동을 알리는 데 유용합니다. 실패는 무시됩니다.",
+        "webhook_enable": "Webhook 전달 활성화",
+        "webhook_url_placeholder": "https://your.webhook.example/hook",
+        "webhook_filter_placeholder": "선택: Stop,SessionEnd,PermissionRequest",
+        "webhook_filter_hint": "쉼표로 구분된 이벤트명, 비어 있음 = 모든 이벤트 전달. 정규화된 이름(PreToolUse) 또는 원본(pre_tool_use) 모두 지원.",
+
         // Appearance
         "preview": "미리보기",
         "panel": "패널",
@@ -1286,6 +1318,14 @@ final class L10n: ObservableObject {
         "excluded_hook_cwd_title": "Belirli Yolların Hook'larını Yoksay",
         "excluded_hook_cwd_desc": "Virgülle ayrılmış alt dizeler. Çalışma dizini bunlardan birini içeren hook olayları sessizce yok sayılır — claude-mem gibi arka plan eklentilerini filtrelemek için kullanışlı. Örn: .claude-mem,.cache/agents",
         "excluded_hook_cwd_placeholder": "örn. .claude-mem,.cache/agents",
+
+        // Webhook iletme
+        "webhook_title": "Webhook İletme",
+        "webhook_desc": "Hook olaylarını JSON olarak harici bir HTTP uç noktasına POST eder. Genel webhook alıcısı üzerinden DingTalk / Lark / Slack'e ajan aktivitesi iletmek için kullanışlıdır. Hatalar sessizce yok sayılır.",
+        "webhook_enable": "Webhook iletmeyi etkinleştir",
+        "webhook_url_placeholder": "https://your.webhook.example/hook",
+        "webhook_filter_placeholder": "İsteğe bağlı: Stop,SessionEnd,PermissionRequest",
+        "webhook_filter_hint": "Virgülle ayrılmış olay adları, boş = tüm olayları iletir. Normalleştirilmiş (PreToolUse) veya ham (pre_tool_use) ad desteklenir.",
 
         // Appearance
         "preview": "Önizleme",

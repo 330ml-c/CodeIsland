@@ -97,6 +97,11 @@ enum SettingsKey {
 
     // Hook cwd exclusion (comma-separated substrings; cwd containing any drops the event)
     static let excludedHookCwdSubstrings = "excludedHookCwdSubstrings"
+
+    // Webhook forwarding: POST hook events to an external URL
+    static let webhookEnabled = "webhookEnabled"
+    static let webhookURL = "webhookURL"
+    static let webhookEventFilter = "webhookEventFilter"  // comma-separated allow-list; empty = forward all
 }
 
 struct SettingsDefaults {
@@ -153,6 +158,10 @@ struct SettingsDefaults {
     static let autoApproveTools = "TaskCreate,TaskUpdate,TaskGet,TaskList,TaskOutput,TaskStop,TodoRead,TodoWrite,EnterPlanMode"
 
     static let excludedHookCwdSubstrings = ""
+
+    static let webhookEnabled = false
+    static let webhookURL = ""
+    static let webhookEventFilter = ""
 }
 
 @MainActor
@@ -204,6 +213,9 @@ class SettingsManager {
             SettingsKey.defaultSource: SettingsDefaults.defaultSource,
             SettingsKey.autoApproveTools: SettingsDefaults.autoApproveTools,
             SettingsKey.excludedHookCwdSubstrings: SettingsDefaults.excludedHookCwdSubstrings,
+            SettingsKey.webhookEnabled: SettingsDefaults.webhookEnabled,
+            SettingsKey.webhookURL: SettingsDefaults.webhookURL,
+            SettingsKey.webhookEventFilter: SettingsDefaults.webhookEventFilter,
         ])
     }
 
