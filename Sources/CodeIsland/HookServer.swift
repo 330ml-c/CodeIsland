@@ -146,8 +146,11 @@ class HookServer {
     private static func forwardEventToWebhook(_ event: HookEvent) {
         let defaults = UserDefaults.standard
         guard defaults.bool(forKey: SettingsKey.webhookEnabled) else { return }
-        guard let urlString = defaults.string(forKey: SettingsKey.webhookURL),
-              !urlString.isEmpty,
+        // Trim whitespace — users routinely paste URLs with leading/trailing space
+        // and URL(string:) silently rejects those (RFC 3986 forbids whitespace).
+        let urlString = (defaults.string(forKey: SettingsKey.webhookURL) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !urlString.isEmpty,
               let endpoint = URL(string: urlString) else { return }
 
         let normalizedName = EventNormalizer.normalize(event.eventName)
