@@ -1,5 +1,33 @@
 # Changelog
 
+## [v1.0.23] - 2026-04-25
+
+### English
+- Add ESP32 BLE companion device — port mascot animations to a real desk pet (#131)
+- Make auto-approve tools configurable in Settings; default no longer auto-approves `ExitPlanMode` so plan-mode exit prompts an approval dialog (#126)
+- Fix TraeCli YAML hook injection corruption on mixed indentation; preserve user comments via surgical merge (#122)
+- Respect `$CODEX_HOME` in codex auto-config (local + ssh) (#129)
+- Add WorkBuddy bundle ID for one-click jump from CodeIsland (#130)
+- Fix remote SSH sessions being force-flipped to idle on local timeout (#121)
+- Fix Ghostty click-to-jump no-op via System Events Accessibility fallback (#84)
+- Fix Terminal.app: minimized window not raising + multi-tab clicks all jumping to same tab (root cause: AppleScript `tty` variable shadowed Terminal.app's tab `tty` property) (#124)
+- Add configurable cwd-substring blocklist for hook events — filter out background plugins like claude-mem (#125)
+- Add webhook forwarding for hook events to external HTTP endpoints — pipe agent activity into DingTalk / Lark / Slack receivers (#115)
+- Add minimum Kiro CLI support — install hooks into `~/.kiro/agents/codeisland.json` (launch with `kiro --agent codeisland`) (#127)
+
+### 中文
+- 新增 ESP32 BLE 桌面伴侣设备——把吉祥物动画移植到实体小屏 (#131)
+- "自动批准工具"可在设置里逐项配置，默认不再自动批准 `ExitPlanMode`，退出 plan 模式会弹审批 (#126)
+- 修复 TraeCli YAML 在混合缩进下 hook 注入损坏的问题，并通过 surgical 合并保留用户注释 (#122)
+- codex 自动配置遵循 `$CODEX_HOME`（本地和 ssh 都生效）(#129)
+- 新增 WorkBuddy 一键跳转 (#130)
+- 修复远程 SSH 任务被本地 timeout 误判完成 (#121)
+- 修复 Ghostty 点击灵动岛无反应——加 System Events Accessibility 兜底 (#84)
+- 修复 Terminal.app 最小化无法打开 + 多终端点哪个都跳同一 tab（真 root cause：AppleScript 局部变量 `tty` 跟 tab property `tty` 同名导致 Strategy 1 静默失效）(#124)
+- 设置里新增"忽略指定路径的 Hook"——按子串过滤 claude-mem 等后台插件触发的事件 (#125)
+- 设置里新增"Webhook 转发"——hook 事件以 JSON POST 到外部端点，方便对接钉钉/飞书/Slack (#115)
+- 新增 Kiro CLI 最小可用支持——hooks 写到 `~/.kiro/agents/codeisland.json`，启动用 `kiro --agent codeisland` (#127)
+
 ## [v1.0.15] - 2026-04-07
 
 ### English
