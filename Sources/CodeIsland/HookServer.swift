@@ -124,9 +124,15 @@ class HookServer {
     /// User-configured cwd substring blocklist for plugin/background hooks (e.g. claude-mem).
     /// Empty default = no filtering. Trimmed, blank entries skipped.
     private static func eventMatchesExcludedCwd(_ cwd: String) -> Bool {
-        let raw = SettingsManager.shared.excludedHookCwdSubstrings
-        guard !raw.isEmpty else { return false }
-        for entry in raw.split(separator: ",") {
+        cwdMatchesAnyPattern(cwd, patternsCSV: SettingsManager.shared.excludedHookCwdSubstrings)
+    }
+
+    /// Pure substring blocklist match — returns true if `cwd` contains any
+    /// non-empty trimmed entry of `patternsCSV`. Extracted for testability;
+    /// `nonisolated` because it touches no actor state.
+    nonisolated static func cwdMatchesAnyPattern(_ cwd: String, patternsCSV: String) -> Bool {
+        guard !patternsCSV.isEmpty else { return false }
+        for entry in patternsCSV.split(separator: ",", omittingEmptySubsequences: false) {
             let pattern = entry.trimmingCharacters(in: .whitespaces)
             if !pattern.isEmpty, cwd.contains(pattern) { return true }
         }
