@@ -411,6 +411,22 @@ if let cmuxWorkspace = env["CMUX_WORKSPACE_ID"], !cmuxWorkspace.isEmpty {
     json["_cmux_workspace_id"] = cmuxWorkspace
 }
 
+// Zellij multiplexer detection — pane id + optional session name for precise tab focus
+if let zellij = env["ZELLIJ"], !zellij.isEmpty {
+    json["_zellij"] = zellij
+    if let pane = env["ZELLIJ_PANE_ID"], !pane.isEmpty {
+        json["_zellij_pane_id"] = pane
+    }
+    if let session = env["ZELLIJ_SESSION_NAME"], !session.isEmpty {
+        json["_zellij_session_name"] = session
+    }
+}
+
+// WezTerm / Kaku pane id — both forks set WEZTERM_PANE; Kaku is a WezTerm fork (bundle id fun.tw93.kaku)
+if let weztermPane = env["WEZTERM_PANE"], !weztermPane.isEmpty {
+    json["_wezterm_pane"] = weztermPane
+}
+
 // --- Serialize enriched JSON ---
 guard let enriched = try? JSONSerialization.data(withJSONObject: json) else { exit(0) }
 

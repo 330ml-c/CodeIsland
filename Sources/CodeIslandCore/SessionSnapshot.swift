@@ -64,6 +64,9 @@ public struct SessionSnapshot: Sendable {
     public var termBundleId: String?    // __CFBundleIdentifier for precise terminal ID
     public var cmuxSurfaceId: String?   // cmux surface UUID (from CMUX_SURFACE_ID env var)
     public var cmuxWorkspaceId: String? // cmux workspace UUID (from CMUX_WORKSPACE_ID env var)
+    public var zellijPaneId: String?    // Zellij pane id (numeric string) from ZELLIJ_PANE_ID env var
+    public var zellijSessionName: String? // Zellij session name from ZELLIJ_SESSION_NAME env var
+    public var weztermPaneId: String?   // WezTerm / Kaku pane id (numeric string) from WEZTERM_PANE env var
     public var cliPid: pid_t?            // CLI process PID (from bridge _ppid)
     public var cliStartTime: Date?       // Start time of the tracked CLI PID (guards PID reuse)
     public var source: String = "claude" // "claude" or "codex"
@@ -680,6 +683,15 @@ public func reduceEvent(
         if let workspace = event.rawJSON["_cmux_workspace_id"] as? String, !workspace.isEmpty {
             sessions[sessionId]?.cmuxWorkspaceId = workspace
         }
+        if let zellijPane = event.rawJSON["_zellij_pane_id"] as? String, !zellijPane.isEmpty {
+            sessions[sessionId]?.zellijPaneId = zellijPane
+        }
+        if let zellijSession = event.rawJSON["_zellij_session_name"] as? String, !zellijSession.isEmpty {
+            sessions[sessionId]?.zellijSessionName = zellijSession
+        }
+        if let weztermPane = event.rawJSON["_wezterm_pane"] as? String, !weztermPane.isEmpty {
+            sessions[sessionId]?.weztermPaneId = weztermPane
+        }
         if let remoteHostId = event.rawJSON["_remote_host_id"] as? String, !remoteHostId.isEmpty {
             sessions[sessionId]?.remoteHostId = remoteHostId
         }
@@ -839,6 +851,17 @@ public func extractMetadata(into sessions: inout [String: SessionSnapshot], sess
     }
     if let workspace = event.rawJSON["_cmux_workspace_id"] as? String, !workspace.isEmpty {
         sessions[sessionId]?.cmuxWorkspaceId = workspace
+    }
+    // Zellij multiplexer pane / session (injected by bridge from ZELLIJ_* env vars)
+    if let zellijPane = event.rawJSON["_zellij_pane_id"] as? String, !zellijPane.isEmpty {
+        sessions[sessionId]?.zellijPaneId = zellijPane
+    }
+    if let zellijSession = event.rawJSON["_zellij_session_name"] as? String, !zellijSession.isEmpty {
+        sessions[sessionId]?.zellijSessionName = zellijSession
+    }
+    // WezTerm / Kaku pane id (injected by bridge from WEZTERM_PANE env var)
+    if let weztermPane = event.rawJSON["_wezterm_pane"] as? String, !weztermPane.isEmpty {
+        sessions[sessionId]?.weztermPaneId = weztermPane
     }
     if let remoteHostId = event.rawJSON["_remote_host_id"] as? String, !remoteHostId.isEmpty {
         sessions[sessionId]?.remoteHostId = remoteHostId
