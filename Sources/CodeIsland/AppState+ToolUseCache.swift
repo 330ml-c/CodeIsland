@@ -1,5 +1,8 @@
 import Foundation
+import os.log
 import CodeIslandCore
+
+private let log = Logger(subsystem: "com.codeisland", category: "PermissionDeny")
 
 /// Cached metadata for an in-flight tool_use_id, written on PreToolUse and consumed by
 /// downstream PermissionRequest / PostToolUse events.
@@ -57,6 +60,7 @@ extension AppState {
         }
 
         let stale = permissionQueue.remove(at: staleIndex)
+        log.notice("⚠️ permission deny reason=resolveToolUseIfCompleted session=\(stale.event.sessionId ?? "nil", privacy: .public) toolUseId=\(toolUseId, privacy: .public) tool=\(stale.event.toolName ?? "nil", privacy: .public) triggerEvent=\(normalized, privacy: .public)")
         let denyBody = #"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny"}}}"#
         stale.continuation.resume(returning: Data(denyBody.utf8))
 
@@ -93,6 +97,7 @@ extension AppState {
         else { return false }
 
         let existing = permissionQueue[existingIndex]
+        log.notice("⚠️ permission deny reason=mergeDuplicatePermissionRequest session=\(existing.event.sessionId ?? "nil", privacy: .public) toolUseId=\(toolUseId, privacy: .public) tool=\(existing.event.toolName ?? "nil", privacy: .public)")
         let denyBody = #"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny"}}}"#
         existing.continuation.resume(returning: Data(denyBody.utf8))
         permissionQueue[existingIndex] = request

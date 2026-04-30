@@ -460,8 +460,8 @@ final class AppState {
             sessions[sessionId]?.currentTool = nil
             sessions[sessionId]?.toolDescription = nil
             // Drain any pending permissions/questions — the process is gone
-            drainPermissions(forSession: sessionId)
-            drainQuestions(forSession: sessionId)
+            drainPermissions(forSession: sessionId, reason: "process-exited")
+            drainQuestions(forSession: sessionId, reason: "process-exited")
             refreshDerivedState()
         }
 
@@ -512,8 +512,8 @@ final class AppState {
     /// so leaked continuations / connections are impossible.
     private func removeSession(_ sessionId: String) {
         // Resume ALL pending continuations for this session
-        drainPermissions(forSession: sessionId)
-        drainQuestions(forSession: sessionId)
+        drainPermissions(forSession: sessionId, reason: "removeSession")
+        drainQuestions(forSession: sessionId, reason: "removeSession")
 
         if surface.sessionId == sessionId {
             autoCollapseTask?.cancel()
@@ -909,15 +909,8 @@ final class AppState {
 
         // Cache PreToolUse payloads so downstream events sharing tool_use_id can be
         // correlated, and drain queue entries whose agent already moved on.
-        let permissionCountBefore = permissionQueue.lazy.filter { $0.event.sessionId == sessionId }.count
-        let keepQueuedPermissionForCompletion = shouldKeepQueuedPermissionForCompletedEvent(
-            event,
-            normalizedEventName: normalizedEventName
-        )
         cachePreToolUseIfApplicable(event)
         resolveToolUseIfCompleted(event)
-        let permissionCountAfter = permissionQueue.lazy.filter { $0.event.sessionId == sessionId }.count
-        let surgicallyDrained = permissionCountAfter < permissionCountBefore
 
         let effects = reduceEvent(sessions: &sessions, event: event, maxHistory: maxHistory)
 
@@ -927,23 +920,26 @@ final class AppState {
             maybeBackfillModel(for: sessionId)
         }
 
-        // If session was waiting but received an activity event, the question/permission
-        // was answered externally (e.g. user replied in terminal). Clear pending items.
+        // Session was waiting and got an activity event. Historically we'd
+        // blanket-drain the whole queue here, assuming the user answered in the
+        // terminal. That heuristic misfires for parallel MCP / plugin tool calls:
+        // an unrelated PostToolUse / Stop / etc. would deny pending permissions
+        // for *other* in-flight tools (#147).
         //
-        // Exception: when resolveToolUseIfCompleted already surgically drained the queue
-        // entry matching this event's tool_use_id and other permission requests for the
-        // same session remain, the surgical drain IS the whole story — skip the blanket
-        // sweep so concurrent in-flight tools stay queued (tested by
-        // testPostToolUseDoesNotAffectUnrelatedQueueEntries).
+        // The right signal that a specific permission is moot is its tool_use_id
+        // showing up in PostToolUse / PostToolUseFailure / PermissionDenied —
+        // resolveToolUseIfCompleted already does that surgically above. We keep
+        // the question-queue drain (questions don't carry tool_use_id reliably
+        // and are rare enough that a blanket sweep is acceptable) and refresh
+        // session status, but never drain unrelated permission requests.
         if wasWaiting {
-            // Events that should NOT clear waiting state
             let keepWaiting: Set<String> = ["Notification", "SessionStart", "SessionEnd", "PreCompact"]
-            let skipBlanketDrain = (surgicallyDrained && permissionCountAfter > 0)
-                || keepQueuedPermissionForCompletion
-            if !keepWaiting.contains(normalizedEventName) && !skipBlanketDrain {
-                drainPermissions(forSession: sessionId)
-                drainQuestions(forSession: sessionId)
-                if sessions[sessionId]?.status == .waitingApproval
+            if !keepWaiting.contains(normalizedEventName) {
+                drainQuestions(forSession: sessionId, reason: "wasWaiting-blanket-drain-event=\(normalizedEventName)")
+                let stillHasPermission = permissionQueue.contains { $0.event.sessionId == sessionId }
+                let stillHasQuestion = questionQueue.contains { $0.event.sessionId == sessionId }
+                if !stillHasPermission && !stillHasQuestion,
+                   sessions[sessionId]?.status == .waitingApproval
                     || sessions[sessionId]?.status == .waitingQuestion {
                     sessions[sessionId]?.status = (normalizedEventName == "Stop") ? .idle : .processing
                     sessions[sessionId]?.currentTool = nil
@@ -1043,7 +1039,7 @@ final class AppState {
         dismissedPermissionSessionIds.remove(sessionId)
 
         // Clear any pending questions for THIS session (mutually exclusive within a session)
-        drainQuestions(forSession: sessionId)
+        drainQuestions(forSession: sessionId, reason: "newPermissionRequest")
 
         sessions[sessionId]?.status = .waitingApproval
         sessions[sessionId]?.currentTool = event.toolName
@@ -1203,7 +1199,7 @@ final class AppState {
             continuation.resume(returning: Data("{}".utf8))
             return
         }
-        drainPermissions(forSession: sessionId)
+        drainPermissions(forSession: sessionId, reason: "handleQuestion(Notification)")
 
         sessions[sessionId]?.status = .waitingQuestion
         sessions[sessionId]?.lastActivity = Date()
@@ -1296,8 +1292,8 @@ final class AppState {
             return
         }
 
-        drainPermissions(forSession: sessionId)
-        drainQuestions(forSession: sessionId)
+        drainPermissions(forSession: sessionId, reason: "handleAskUserQuestion")
+        drainQuestions(forSession: sessionId, reason: "handleAskUserQuestion")
 
         sessions[sessionId]?.status = .waitingQuestion
         sessions[sessionId]?.lastActivity = Date()
@@ -1425,11 +1421,12 @@ final class AppState {
     }
 
     /// Drain all queued permissions for a specific session, resuming their continuations with deny
-    private func drainPermissions(forSession sessionId: String) {
+    private func drainPermissions(forSession sessionId: String, reason: String = "unknown") {
         dismissedPermissionSessionIds.remove(sessionId)
         let denyResponse = Data(#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny"}}}"#.utf8)
         permissionQueue.removeAll { item in
             guard item.event.sessionId == sessionId else { return false }
+            log.notice("⚠️ permission deny reason=drainPermissions(\(reason, privacy: .public)) session=\(sessionId, privacy: .public) toolUseId=\(item.toolUseId ?? "nil", privacy: .public) tool=\(item.event.toolName ?? "nil", privacy: .public)")
             item.continuation.resume(returning: denyResponse)
             return true
         }
@@ -1441,8 +1438,8 @@ final class AppState {
             || permissionQueue.contains(where: { $0.event.sessionId == sessionId })
         guard hadPending else { return }
 
-        drainQuestions(forSession: sessionId)
-        drainPermissions(forSession: sessionId)
+        drainQuestions(forSession: sessionId, reason: "peer-disconnect")
+        drainPermissions(forSession: sessionId, reason: "peer-disconnect")
         let currentStatus = sessions[sessionId]?.status
         if currentStatus == .waitingApproval || currentStatus == .waitingQuestion {
             sessions[sessionId]?.status = .processing
@@ -1455,10 +1452,11 @@ final class AppState {
 
     /// Drain all queued questions for a specific session.
     /// AskUserQuestion-derived requests are denied; notification questions return empty.
-    private func drainQuestions(forSession sessionId: String) {
+    private func drainQuestions(forSession sessionId: String, reason: String = "unknown") {
         questionQueue.removeAll { item in
             guard item.event.sessionId == sessionId else { return false }
             if item.isFromPermission {
+                log.notice("⚠️ permission deny reason=drainQuestions(\(reason, privacy: .public)) session=\(sessionId, privacy: .public) tool=AskUserQuestion")
                 let denyData = Data(
                     #"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny"}}}"#.utf8)
                 item.continuation.resume(returning: denyData)
