@@ -33,6 +33,7 @@ public struct SessionSnapshot: Sendable {
         "kimi",
         "pi",
         "kiro",
+        "cline",
     ]
 
     public var status: AgentStatus = .idle
@@ -282,6 +283,7 @@ public struct SessionSnapshot: Sendable {
         case "kimi": return "Kimi Code CLI"
         case "pi": return "pi"
         case "kiro": return "Kiro"
+        case "cline": return "Cline"
         default:
             if let customName = Self.loadCustomSourceNames()[source] {
                 return customName
@@ -619,6 +621,24 @@ public func reduceEvent(
             sessions[sessionId]?.addRecentMessage(ChatMessage(isUser: false, text: text))
         }
         sessions[sessionId]?.status = .processing
+    case "TaskRoundComplete":
+        sessions[sessionId]?.interrupted = (event.eventName == "TaskCancel")
+        sessions[sessionId]?.status = .processing
+        sessions[sessionId]?.currentTool = nil
+        sessions[sessionId]?.toolDescription = nil
+        let assistantMsg = firstStringFromEvent(
+            event,
+            keys: ["last_assistant_message", "text", "message", "summary"],
+            includeNested: true
+        )
+        if let msg = assistantMsg {
+            sessions[sessionId]?.lastAssistantMessage = msg
+            sessions[sessionId]?.addRecentMessage(ChatMessage(isUser: false, text: msg))
+        } else if sessions[sessionId]?.lastAssistantMessage == nil,
+                  sessions[sessionId]?.recentMessages.last?.isUser == true {
+            sessions[sessionId]?.addRecentMessage(ChatMessage(isUser: false, text: "[回复完成]"))
+        }
+        effects.append(.enqueueCompletion(sessionId: sessionId))
     case "Stop":
         // Detect ESC/Ctrl+C interruption
         let stopReason = event.rawJSON["stop_reason"] as? String ?? ""
