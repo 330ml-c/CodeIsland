@@ -638,6 +638,10 @@ public func reduceEvent(
                   sessions[sessionId]?.recentMessages.last?.isUser == true {
             sessions[sessionId]?.addRecentMessage(ChatMessage(isUser: false, text: "[回复完成]"))
         }
+        // Cline tasks are single-round — treat completion/cancellation as session end
+        if sessions[sessionId]?.source == "cline" {
+            sessions[sessionId]?.status = .idle
+        }
         effects.append(.enqueueCompletion(sessionId: sessionId))
     case "Stop":
         // Detect ESC/Ctrl+C interruption
