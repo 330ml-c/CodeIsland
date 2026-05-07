@@ -304,10 +304,6 @@ if sourceTag == "cline" {
             json["tool_name"] = toolName
         }
     }
-    // TaskCancel maps to Stop; mark it interrupted so the session shows the cancelled state.
-    if let hookName = json["hookName"] as? String, hookName == "TaskCancel" {
-        json["stop_reason"] = "interrupted"
-    }
 }
 
 // Resolve process ancestry once — used for both session_id fallback (#148) and

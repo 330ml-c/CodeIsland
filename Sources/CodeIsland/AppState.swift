@@ -1926,11 +1926,12 @@ final class AppState {
             guard ConfigInstaller.isEnabled(source: source), fm.fileExists(atPath: path) else { return nil }
             return path
         }
-        // Cline is always scanned (no hook install required)
-        let clineBase = Self.clineStorageRoot()
-        for sub in ["state", "tasks"] {
-            let p = "\(clineBase)/\(sub)"
-            if fm.fileExists(atPath: p) { roots.append(p) }
+        if ConfigInstaller.isEnabled(source: "cline") {
+            let clineBase = Self.clineStorageRoot()
+            for sub in ["state", "tasks"] {
+                let p = "\(clineBase)/\(sub)"
+                if fm.fileExists(atPath: p) { roots.append(p) }
+            }
         }
         return roots
     }
@@ -3144,7 +3145,7 @@ final class AppState {
         let pid: pid_t? = nil
 
         return [DiscoveredSession(
-            sessionId: "cline-\(taskId)",
+            sessionId: taskId,
             cwd: cwd,
             tty: nil,
             model: model,
