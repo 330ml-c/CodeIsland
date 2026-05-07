@@ -69,6 +69,10 @@ public struct SessionSnapshot: Sendable {
     public var cliStartTime: Date?       // Start time of the tracked CLI PID (guards PID reuse)
     public var source: String = "claude" // "claude" or "codex"
     public var interrupted: Bool = false
+    /// Cline-specific: true after TaskComplete/TaskCancel until the next TaskStart/TaskResume.
+    /// Cline runs hooks asynchronously (background bridge), so events from prior tools can
+    /// arrive after a TaskCancel and revive the session. This flag drops those stale events.
+    public var taskRoundEnded: Bool = false
     public var sessionTitle: String?
     public var sessionTitleSource: SessionTitleSource?
     public var providerSessionId: String?
@@ -522,6 +526,18 @@ public func reduceEvent(
     extractMetadata(into: &sessions, sessionId: sessionId, event: event)
     let isRemote = sessions[sessionId]?.isRemote == true
 
+    // Cline ships hooks via shell scripts that spawn the bridge in the background,
+    // so events for the same session can arrive out of order. Once a task round
+    // ends (TaskComplete/TaskCancel), drop any in-flight tool events that race in
+    // afterwards — they would otherwise revive the session into .processing/.running.
+    // The next TaskStart (SessionStart) or TaskResume (UserPromptSubmit) clears the flag.
+    if sessions[sessionId]?.source == "cline",
+       sessions[sessionId]?.taskRoundEnded == true,
+       eventName != "SessionStart",
+       eventName != "UserPromptSubmit" {
+        return effects
+    }
+
     // Route subagent-specific events
     if let agentId = event.agentId {
         let handled = handleSubagentEvent(
@@ -544,6 +560,7 @@ public func reduceEvent(
     switch eventName {
     case "UserPromptSubmit":
         sessions[sessionId]?.interrupted = false
+        sessions[sessionId]?.taskRoundEnded = false
         sessions[sessionId]?.status = .processing
         sessions[sessionId]?.currentTool = nil
         sessions[sessionId]?.toolDescription = nil
@@ -638,9 +655,11 @@ public func reduceEvent(
                   sessions[sessionId]?.recentMessages.last?.isUser == true {
             sessions[sessionId]?.addRecentMessage(ChatMessage(isUser: false, text: "[回复完成]"))
         }
-        // Cline tasks are single-round — treat completion/cancellation as session end
+        // Cline tasks are single-round — treat completion/cancellation as session end,
+        // and latch a flag so out-of-order in-flight tool events don't revive it.
         if sessions[sessionId]?.source == "cline" {
             sessions[sessionId]?.status = .idle
+            sessions[sessionId]?.taskRoundEnded = true
         }
         effects.append(.enqueueCompletion(sessionId: sessionId))
     case "Stop":
