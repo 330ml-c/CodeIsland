@@ -221,7 +221,7 @@ struct TerminalVisibilityDetector {
 
     /// Shared WezTerm-family active-pane detection. Match precedence:
     ///   1. `weztermPaneId` (captured by bridge from `WEZTERM_PANE` env) — exact id match
-    ///   2. session TTY → pane tty_name
+    ///   2. cliPid-resolved/session TTY → pane tty_name
     ///   3. session CWD → pane cwd (with `file://` prefix tolerance)
     private static func isWeztermFamilyTabActive(
         session: SessionSnapshot,
@@ -241,10 +241,14 @@ struct TerminalVisibilityDetector {
             return paneIdInt == activePaneId
         }
 
-        // 2) TTY match
-        if let tty = session.ttyPath, !tty.isEmpty,
-           let paneTty = activePane["tty_name"] as? String {
-            return paneTty == tty
+        // 2) TTY match. Prefer ps-resolved TTY when hook capture only saw /dev/tty.
+        let processTty = session.cliPid.flatMap(ProcessRunner.ttyForPid)
+        let candidateTtys = [processTty, session.ttyPath]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty && $0 != "/dev/tty" }
+        if let paneTty = activePane["tty_name"] as? String,
+           candidateTtys.contains(paneTty) {
+            return true
         }
 
         // 3) CWD match (file:// tolerant)

@@ -197,12 +197,12 @@ struct TerminalActivator {
         // Kaku is a WezTerm fork: same `cli list` JSON shape, different binary + bundle id.
         // Match by bundle id (most reliable) or termApp string fallback.
         if session.termBundleId == "fun.tw93.kaku" || lower == "kaku" {
-            activateKaku(ttyPath: effectiveTty, cwd: session.cwd, paneId: session.weztermPaneId)
+            activateKaku(ttyPath: effectiveTty, cwd: session.cwd, paneId: session.weztermPaneId, cliPid: session.cliPid)
             return
         }
 
         if lower.contains("wezterm") || lower.contains("wez") {
-            activateWezTerm(ttyPath: effectiveTty, cwd: session.cwd, paneId: session.weztermPaneId)
+            activateWezTerm(ttyPath: effectiveTty, cwd: session.cwd, paneId: session.weztermPaneId, cliPid: session.cliPid)
             return
         }
 
@@ -679,7 +679,7 @@ struct TerminalActivator {
 
     // MARK: - WezTerm (CLI: wezterm cli list + activate-tab)
 
-    private static func activateWezTerm(ttyPath: String?, cwd: String?, paneId: String? = nil) {
+    private static func activateWezTerm(ttyPath: String?, cwd: String?, paneId: String? = nil, cliPid: pid_t? = nil) {
         activateWeztermFamily(
             displayName: "WezTerm",
             cliName: "wezterm",
@@ -689,13 +689,14 @@ struct TerminalActivator {
             ],
             ttyPath: ttyPath,
             cwd: cwd,
-            paneId: paneId
+            paneId: paneId,
+            cliPid: cliPid
         )
     }
 
     // MARK: - Kaku (WezTerm fork, bundle id fun.tw93.kaku, CLI: `kaku cli ...`)
 
-    private static func activateKaku(ttyPath: String?, cwd: String?, paneId: String? = nil) {
+    private static func activateKaku(ttyPath: String?, cwd: String?, paneId: String? = nil, cliPid: pid_t? = nil) {
         activateWeztermFamily(
             displayName: "Kaku",
             cliName: "kaku",
@@ -705,7 +706,8 @@ struct TerminalActivator {
             ],
             ttyPath: ttyPath,
             cwd: cwd,
-            paneId: paneId
+            paneId: paneId,
+            cliPid: cliPid
         )
     }
 
@@ -717,7 +719,8 @@ struct TerminalActivator {
         bundleCandidates: [String],
         ttyPath: String?,
         cwd: String?,
-        paneId: String?
+        paneId: String?,
+        cliPid: pid_t?
     ) {
         bringToFront(displayName)
         guard let bin = findBinary(cliName, extraPaths: bundleCandidates) else { return }
@@ -735,10 +738,14 @@ struct TerminalActivator {
             guard let json = runProcess(bin, args: ["cli", "list", "--format", "json"]),
                   let panes = try? JSONSerialization.jsonObject(with: json) as? [[String: Any]] else { return }
 
-            // Find pane: prefer TTY match, fallback to CWD
+            // Find pane: prefer process-resolved TTY, then captured TTY, then CWD.
             var matchedPaneId: Int?
             var matchedTabId: Int?
-            if let tty = ttyPath {
+            let processTty = cliPid.flatMap(ProcessRunner.ttyForPid)
+            let candidateTtys = [processTty, ttyPath]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty && $0 != "/dev/tty" }
+            for tty in candidateTtys where matchedPaneId == nil && matchedTabId == nil {
                 if let pane = panes.first(where: { ($0["tty_name"] as? String) == tty }) {
                     matchedPaneId = pane["pane_id"] as? Int
                     matchedTabId = pane["tab_id"] as? Int
