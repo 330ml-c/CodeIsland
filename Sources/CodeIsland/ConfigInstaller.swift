@@ -32,6 +32,11 @@ enum HookFormat {
     /// Kiro CLI style: per-agent JSON file at ~/.kiro/agents/<name>.json
     /// with hooks keyed by camelCase event names and `timeout_ms` (#127).
     case kiroAgent
+    /// VSCode extension agents (e.g. Cline) that have no shell hook system.
+    /// Detection is file-poll based; no config is written on enable.
+    case none
+    /// Cline: per-event executable files in ~/Documents/Cline/Hooks/<EventName>
+    case cline
 
     var storageValue: String {
         switch self {
@@ -42,6 +47,8 @@ enum HookFormat {
         case .copilot: return "copilot"
         case .kimi: return "kimi"
         case .kiroAgent: return "kiroAgent"
+        case .none: return "none"
+        case .cline: return "cline"
         }
     }
 
@@ -54,6 +61,8 @@ enum HookFormat {
         case "copilot": self = .copilot
         case "kimi": self = .kimi
         case "kiroagent": self = .kiroAgent
+        case "none": self = .none
+        case "cline": self = .cline
         default: return nil
         }
     }
@@ -342,6 +351,23 @@ struct ConfigInstaller {
             format: .kiroAgent,
             events: defaultEvents(for: .kiroAgent)
         ),
+        // Cline — file-based hooks in ~/Documents/Cline/Hooks/<EventName>
+        CLIConfig(
+            name: "Cline", source: "cline",
+            configPath: "Documents/Cline/Hooks",
+            configKey: "",
+            format: .cline,
+            events: [
+                ("UserPromptSubmit", 5, true),
+                ("PreToolUse",       5, false),
+                ("PostToolUse",      5, true),
+                ("TaskStart",        5, false),
+                ("TaskResume",       5, true),
+                ("TaskCancel",       5, true),
+                ("TaskComplete",     5, true),
+                ("PreCompact",       5, true),
+            ]
+        ),
     ]
 
     static var allCLIs: [CLIConfig] {
@@ -440,6 +466,10 @@ struct ConfigInstaller {
                 ("postToolUse", 5, true),
                 ("stop", 5, true),
             ]
+        case .cline:
+            return []
+        case .none:
+            return []
         }
     }
 
@@ -632,6 +662,10 @@ struct ConfigInstaller {
     static func isInstalled(source: String) -> Bool {
         if source == "opencode" { return isOpencodePluginInstalled(fm: FileManager.default) }
         if source == "traecli" { return isTraecliHooksInstalled(fm: FileManager.default) }
+        if source == "cline" {
+            guard let cli = allCLIs.first(where: { $0.source == "cline" }) else { return false }
+            return isClineHooksInstalled(cli: cli, fm: FileManager.default)
+        }
         guard let cli = allCLIs.first(where: { $0.source == source }) else { return false }
         return isHooksInstalled(for: cli, fm: FileManager.default)
     }
@@ -640,6 +674,11 @@ struct ConfigInstaller {
     static func cliExists(source: String) -> Bool {
         if source == "opencode" { return FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.config/opencode") }
         if source == "copilot" { return FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.copilot") }
+        if source == "cline" {
+            let fm = FileManager.default
+            return fm.fileExists(atPath: NSHomeDirectory() + "/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev")
+                || fm.fileExists(atPath: NSHomeDirectory() + "/Documents/Cline")
+        }
         guard let cli = allCLIs.first(where: { $0.source == source }) else { return false }
         return FileManager.default.fileExists(atPath: cli.dirPath)
     }
@@ -941,6 +980,7 @@ struct ConfigInstaller {
 
     @discardableResult
     private static func installExternalHooks(cli: CLIConfig, fm: FileManager) -> Bool {
+        if cli.format == .cline { return installClineHooks(cli: cli, fm: fm) }
         if cli.format == .kimi {
             // Kimi: do not create ~/.kimi or config files unless there is already
             // evidence of an existing Kimi installation/configuration.
@@ -1017,6 +1057,9 @@ struct ConfigInstaller {
                 // Kiro entries: { command, matcher: "*", timeout_ms }. Caller declares
                 // timeout in seconds for consistency with other CLIs; convert to ms here.
                 entry = ["command": baseCommand, "matcher": "*", "timeout_ms": timeout * 1000]
+            case .cline, .none:
+                // Handled at the top of installExternalHooks; never reaches here
+                return false
             }
             eventEntries.append(entry)
             hooks[event] = eventEntries
@@ -1737,6 +1780,10 @@ struct ConfigInstaller {
     // MARK: - Uninstall (generic)
 
     internal static func uninstallHooks(cli: CLIConfig, fm: FileManager) {
+        if cli.format == .cline {
+            uninstallClineHooks(cli: cli, fm: fm)
+            return
+        }
         if cli.format == .kimi {
             guard fm.fileExists(atPath: cli.fullPath),
                   let data = fm.contents(atPath: cli.fullPath),
@@ -1781,6 +1828,62 @@ struct ConfigInstaller {
         }
         if let merged, let data = merged.data(using: .utf8) {
             fm.createFile(atPath: cli.fullPath, contents: data)
+        }
+    }
+
+    // MARK: - Cline file-based hooks
+
+    private static let clineHookMarker = "codeisland-bridge --source cline"
+
+    // Cline requires valid JSON on stdout from every hook invocation.
+    // Run the bridge in the background (forwarding stdin) so it can report
+    // status to CodeIsland, then immediately return {"cancel":false} to Cline.
+    private static let clineHookScript = """
+        #!/bin/bash
+        INPUT=$(cat)
+        printf '%s' "$INPUT" | ~/.codeisland/codeisland-bridge --source cline "$@" >/dev/null 2>&1 &
+        printf '{"cancel":false}'
+        """
+
+    @discardableResult
+    private static func installClineHooks(cli: CLIConfig, fm: FileManager) -> Bool {
+        let hooksDir = cli.fullPath
+        if !fm.fileExists(atPath: hooksDir) {
+            try? fm.createDirectory(atPath: hooksDir, withIntermediateDirectories: true)
+        }
+        var ok = true
+        for (event, _, _) in cli.events {
+            let filePath = "\(hooksDir)/\(event)"
+            if !fm.createFile(atPath: filePath, contents: Data(clineHookScript.utf8)) {
+                ok = false
+            }
+            chmod(filePath, 0o755)
+        }
+        return ok
+    }
+
+    private static func isClineHooksInstalled(cli: CLIConfig, fm: FileManager) -> Bool {
+        let hooksDir = cli.fullPath
+        return cli.events.allSatisfy { (event, _, _) in
+            let filePath = "\(hooksDir)/\(event)"
+            guard fm.fileExists(atPath: filePath),
+                  let data = fm.contents(atPath: filePath),
+                  let content = String(data: data, encoding: .utf8)
+            else { return false }
+            return content.contains(clineHookMarker)
+        }
+    }
+
+    private static func uninstallClineHooks(cli: CLIConfig, fm: FileManager) {
+        let hooksDir = cli.fullPath
+        for (event, _, _) in cli.events {
+            let filePath = "\(hooksDir)/\(event)"
+            guard fm.fileExists(atPath: filePath),
+                  let data = fm.contents(atPath: filePath),
+                  let content = String(data: data, encoding: .utf8),
+                  content.contains(clineHookMarker)
+            else { continue }
+            try? fm.removeItem(atPath: filePath)
         }
     }
 

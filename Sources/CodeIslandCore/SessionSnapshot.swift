@@ -33,6 +33,7 @@ public struct SessionSnapshot: Sendable {
         "kimi",
         "pi",
         "kiro",
+        "cline",
     ]
 
     public var status: AgentStatus = .idle
@@ -71,6 +72,10 @@ public struct SessionSnapshot: Sendable {
     public var cliStartTime: Date?       // Start time of the tracked CLI PID (guards PID reuse)
     public var source: String = "claude" // "claude" or "codex"
     public var interrupted: Bool = false
+    /// Cline-specific: true after TaskComplete/TaskCancel until the next TaskStart/TaskResume.
+    /// Cline runs hooks asynchronously (background bridge), so events from prior tools can
+    /// arrive after a TaskCancel and revive the session. This flag drops those stale events.
+    public var taskRoundEnded: Bool = false
     public var sessionTitle: String?
     public var sessionTitleSource: SessionTitleSource?
     public var providerSessionId: String?
@@ -285,6 +290,7 @@ public struct SessionSnapshot: Sendable {
         case "kimi": return "Kimi Code CLI"
         case "pi": return "pi"
         case "kiro": return "Kiro"
+        case "cline": return "Cline"
         default:
             if let customName = Self.loadCustomSourceNames()[source] {
                 return customName
@@ -527,6 +533,18 @@ public func reduceEvent(
     }
     let isRemote = sessions[sessionId]?.isRemote == true
 
+    // Cline ships hooks via shell scripts that spawn the bridge in the background,
+    // so events for the same session can arrive out of order. Once a task round
+    // ends (TaskComplete/TaskCancel), drop any in-flight tool events that race in
+    // afterwards — they would otherwise revive the session into .processing/.running.
+    // The next TaskStart (SessionStart) or TaskResume (UserPromptSubmit) clears the flag.
+    if sessions[sessionId]?.source == "cline",
+       sessions[sessionId]?.taskRoundEnded == true,
+       eventName != "SessionStart",
+       eventName != "UserPromptSubmit" {
+        return effects
+    }
+
     // Route subagent-specific events
     if let agentId = event.agentId {
         let handled = handleSubagentEvent(
@@ -549,6 +567,7 @@ public func reduceEvent(
     switch eventName {
     case "UserPromptSubmit":
         sessions[sessionId]?.interrupted = false
+        sessions[sessionId]?.taskRoundEnded = false
         sessions[sessionId]?.status = .processing
         sessions[sessionId]?.currentTool = nil
         sessions[sessionId]?.toolDescription = nil
@@ -626,6 +645,30 @@ public func reduceEvent(
             sessions[sessionId]?.addRecentMessage(ChatMessage(isUser: false, text: text))
         }
         sessions[sessionId]?.status = .processing
+    case "TaskRoundComplete":
+        sessions[sessionId]?.interrupted = (event.eventName == "TaskCancel")
+        sessions[sessionId]?.status = .processing
+        sessions[sessionId]?.currentTool = nil
+        sessions[sessionId]?.toolDescription = nil
+        let assistantMsg = firstStringFromEvent(
+            event,
+            keys: ["last_assistant_message", "text", "message", "summary"],
+            includeNested: true
+        )
+        if let msg = assistantMsg {
+            sessions[sessionId]?.lastAssistantMessage = msg
+            sessions[sessionId]?.addRecentMessage(ChatMessage(isUser: false, text: msg))
+        } else if sessions[sessionId]?.lastAssistantMessage == nil,
+                  sessions[sessionId]?.recentMessages.last?.isUser == true {
+            sessions[sessionId]?.addRecentMessage(ChatMessage(isUser: false, text: "[回复完成]"))
+        }
+        // Cline tasks are single-round — treat completion/cancellation as session end,
+        // and latch a flag so out-of-order in-flight tool events don't revive it.
+        if sessions[sessionId]?.source == "cline" {
+            sessions[sessionId]?.status = .idle
+            sessions[sessionId]?.taskRoundEnded = true
+        }
+        effects.append(.enqueueCompletion(sessionId: sessionId))
     case "Stop":
         // Detect ESC/Ctrl+C interruption
         let stopReason = event.rawJSON["stop_reason"] as? String ?? ""

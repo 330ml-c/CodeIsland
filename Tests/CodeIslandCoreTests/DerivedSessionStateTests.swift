@@ -40,6 +40,11 @@ final class DerivedSessionStateTests: XCTestCase {
         XCTAssertEqual(EventNormalizer.normalize("post_compact"), "PostCompact")
     }
 
+    func testNormalizesClineTaskTerminalEvents() {
+        XCTAssertEqual(EventNormalizer.normalize("TaskComplete"), "TaskRoundComplete")
+        XCTAssertEqual(EventNormalizer.normalize("TaskCancel"), "TaskRoundComplete")
+    }
+
     func testCLIProcessResolverPrefersTraecliBinaryOverShellParent() {
         let pid = CLIProcessResolver.resolvedTrackedPID(
             immediateParentPID: 100,
