@@ -36,6 +36,14 @@ public struct SessionSnapshot: Sendable {
         "cline",
     ]
 
+    public static let ideCompletionSources: Set<String> = [
+        "cursor",
+        "trae",
+        "traecn",
+        "codebuddy",
+        "codybuddycn",
+    ]
+
     public var status: AgentStatus = .idle
     public var currentTool: String?
     public var toolDescription: String?
@@ -644,7 +652,15 @@ public func reduceEvent(
             sessions[sessionId]?.lastAssistantMessage = text
             sessions[sessionId]?.addRecentMessage(ChatMessage(isUser: false, text: text))
         }
-        sessions[sessionId]?.status = .processing
+        if let source = sessions[sessionId]?.source,
+           SessionSnapshot.ideCompletionSources.contains(source) {
+            sessions[sessionId]?.status = .idle
+            sessions[sessionId]?.currentTool = nil
+            sessions[sessionId]?.toolDescription = nil
+            effects.append(.enqueueCompletion(sessionId: sessionId))
+        } else {
+            sessions[sessionId]?.status = .processing
+        }
     case "TaskRoundComplete":
         sessions[sessionId]?.interrupted = (event.eventName == "TaskCancel")
         sessions[sessionId]?.status = .processing
