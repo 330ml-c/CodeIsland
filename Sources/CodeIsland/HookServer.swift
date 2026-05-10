@@ -241,6 +241,14 @@ class HookServer {
         return .event
     }
 
+    nonisolated static func shouldDeferPermissionRequestToProvider(_ event: HookEvent) -> Bool {
+        guard EventNormalizer.normalize(event.eventName) == "PermissionRequest",
+              event.toolName != "AskUserQuestion" else {
+            return false
+        }
+        return CodexPermissionRules.shouldDeferToCodexAutoReview(for: event)
+    }
+
     private static let pluginMarkerBytes = Data("_via_plugin".utf8)
     private static let sourceMarkerBytes = Data(#""_source""#.utf8)
     private static let codexMarkerBytes = Data("codex".utf8)
@@ -438,6 +446,12 @@ class HookServer {
                 }
                 return
             }
+
+            if Self.shouldDeferPermissionRequestToProvider(event) {
+                sendResponse(connection: connection, data: Data("{}".utf8))
+                return
+            }
+
             monitorPeerDisconnect(connection: connection, sessionId: sessionId)
             Task {
                 let responseBody = await withCheckedContinuation { continuation in

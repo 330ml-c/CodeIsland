@@ -266,6 +266,62 @@ final class AppStatePermissionFlowTests: XCTestCase {
         XCTAssertEqual(contents.components(separatedBy: #"pattern = ["npm", "run", "build"]"#).count - 1, 1)
     }
 
+    func testCodexAutoReviewConfigDefersPermissionRequestToCodex() throws {
+        let codexHome = makeTemporaryCodexHome()
+        defer { try? FileManager.default.removeItem(at: codexHome) }
+        try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
+        try #"approvals_reviewer = "auto_review""#
+            .write(to: codexHome.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+
+        let event = try makePermissionRequestEvent(
+            sessionId: "s-codex-auto-review",
+            toolName: "Bash",
+            source: "codex"
+        )
+
+        XCTAssertTrue(HookServer.shouldDeferPermissionRequestToProvider(event))
+    }
+
+    func testCodexAutoReviewConfigDoesNotDeferAskUserQuestion() throws {
+        let codexHome = makeTemporaryCodexHome()
+        defer { try? FileManager.default.removeItem(at: codexHome) }
+        try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
+        try #"approvals_reviewer = "guardian_subagent""#
+            .write(to: codexHome.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+
+        let event = try makePermissionRequestEvent(
+            sessionId: "s-codex-question",
+            toolName: "AskUserQuestion",
+            toolInput: ["question": "Continue?", "options": ["Yes", "No"]],
+            source: "codex"
+        )
+
+        XCTAssertFalse(HookServer.shouldDeferPermissionRequestToProvider(event))
+    }
+
+    func testCodexProfileAutoReviewConfigIsDetected() throws {
+        let config = """
+        profile = "work"
+        approvals_reviewer = "user"
+
+        [profiles.work]
+        approvals_reviewer = "auto_review"
+        """
+
+        XCTAssertTrue(CodexPermissionRules.configEnablesAutoReview(config))
+    }
+
+    func testCodexUserReviewerConfigDoesNotDefer() throws {
+        let config = """
+        approvals_reviewer = "user"
+
+        [profiles.work]
+        approvals_reviewer = "auto_review"
+        """
+
+        XCTAssertFalse(CodexPermissionRules.configEnablesAutoReview(config))
+    }
+
     // MARK: - Helpers
 
     private func makeTemporaryCodexHome() -> URL {

@@ -12,6 +12,64 @@ struct CodexPermissionRules {
         SessionSnapshot.normalizedSupportedSource(event.rawJSON["_source"] as? String) == "codex"
     }
 
+    static func shouldDeferToCodexAutoReview(for event: HookEvent, fileManager: FileManager = .default) -> Bool {
+        guard isCodexEvent(event) else { return false }
+
+        if let reviewer = eventReviewerValue(event.rawJSON) {
+            return isAutoReviewReviewer(reviewer)
+        }
+
+        let configPath = ConfigInstaller.codexHome() + "/config.toml"
+        guard fileManager.fileExists(atPath: configPath),
+              let contents = try? String(contentsOfFile: configPath, encoding: .utf8) else {
+            return false
+        }
+        return configEnablesAutoReview(contents)
+    }
+
+    static func configEnablesAutoReview(_ contents: String) -> Bool {
+        var currentSection: String?
+        var selectedProfile: String?
+        var topLevelReviewer: String?
+        var profileReviewers: [String: String] = [:]
+
+        for rawLine in contents.components(separatedBy: .newlines) {
+            let line = stripTomlComment(rawLine).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty else { continue }
+
+            if let section = tomlTableName(from: line) {
+                currentSection = section
+                continue
+            }
+
+            guard let equals = line.firstIndex(of: "=") else { continue }
+            let key = String(line[..<equals]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let value = tomlScalarString(String(line[line.index(after: equals)...]))
+
+            if currentSection == nil {
+                if key == "profile" {
+                    selectedProfile = value
+                } else if key == "approvals_reviewer" {
+                    topLevelReviewer = value
+                }
+            } else if let profileName = profileName(fromSection: currentSection),
+                      key == "approvals_reviewer" {
+                profileReviewers[profileName] = value
+            }
+        }
+
+        if let selectedProfile,
+           let profileReviewer = profileReviewers[selectedProfile] {
+            return isAutoReviewReviewer(profileReviewer)
+        }
+
+        if let topLevelReviewer {
+            return isAutoReviewReviewer(topLevelReviewer)
+        }
+
+        return false
+    }
+
     static func prefixPattern(for event: HookEvent) -> [String]? {
         if let suggested = findSuggestedPrefixRule(in: event.rawJSON) {
             return suggested
@@ -74,6 +132,85 @@ struct CodexPermissionRules {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         return "\"\(escaped)\""
+    }
+
+    private static func eventReviewerValue(_ rawJSON: [String: Any]) -> String? {
+        for key in ["approvals_reviewer", "approvalsReviewer", "_approvals_reviewer"] {
+            if let value = rawJSON[key] as? String {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { return trimmed }
+            }
+        }
+        return nil
+    }
+
+    private static func isAutoReviewReviewer(_ value: String) -> Bool {
+        let normalized = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            .lowercased()
+        return normalized == "auto_review" || normalized == "guardian_subagent"
+    }
+
+    private static func stripTomlComment(_ line: String) -> String {
+        var result = ""
+        var quote: Character?
+        var escaping = false
+
+        for ch in line {
+            if let activeQuote = quote {
+                result.append(ch)
+                if escaping {
+                    escaping = false
+                } else if activeQuote == "\"", ch == "\\" {
+                    escaping = true
+                } else if ch == activeQuote {
+                    quote = nil
+                }
+                continue
+            }
+
+            if ch == "#" {
+                break
+            }
+            if ch == "\"" || ch == "'" {
+                quote = ch
+            }
+            result.append(ch)
+        }
+
+        return result
+    }
+
+    private static func tomlTableName(from line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("["),
+              trimmed.hasSuffix("]"),
+              !trimmed.hasPrefix("[[") else {
+            return nil
+        }
+        return String(trimmed.dropFirst().dropLast())
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func profileName(fromSection section: String?) -> String? {
+        guard let section, section.hasPrefix("profiles.") else { return nil }
+        let raw = String(section.dropFirst("profiles.".count))
+        let name = tomlScalarString(raw)
+        return name.isEmpty ? nil : name
+    }
+
+    private static func tomlScalarString(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2,
+              let first = trimmed.first,
+              let last = trimmed.last,
+              (first == "\"" || first == "'"),
+              first == last else {
+            return trimmed
+        }
+
+        return String(trimmed.dropFirst().dropLast())
     }
 
     private static func findSuggestedPrefixRule(in value: Any) -> [String]? {
